@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Seoul Snow Trip 2026</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Varela Round', 'Noto Sans TC', sans-serif; 
+            background-color: #F0F9FF;
+            color: #334155;
+            padding-bottom: calc(90px + env(safe-area-inset-bottom));
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .day-card { border-radius: 20px; transition: all 0.3s; }
+        .day-card.active {
+            background: white; border: 2px solid #38BDF8;
+            box-shadow: 0 4px 8px rgba(186, 230, 253, 0.6);
+            transform: translateY(-4px);
+        }
+        .day-card.inactive { color: #94A3B8; }
+
+        .ticket-card { background: white; border: 2px dashed #BAE6FD; border-radius: 24px; }
+        .spot-card { background: white; border-radius: 24px; box-shadow: 0 4px 15px rgba(186, 230, 253, 0.3); border: 1px solid white; }
+        .expense-card { background: white; border-radius: 20px; box-shadow: 0 2px 8px rgba(186, 230, 253, 0.2); border: 1px solid white; transition: transform 0.2s; }
+        .expense-card:active { transform: scale(0.98); }
+        .journal-card { background: white; border-radius: 24px; box-shadow: 0 4px 12px rgba(186, 230, 253, 0.2); overflow: hidden; }
+
+        .settlement-card {
+            background: white; border: 2px dashed #7DD3FC; color: #334155; border-radius: 24px;
+        }
+        
+        .info-pill { height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; }
+        .category-select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230284C7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 0.8rem center; background-size: 1em; padding-right: 2rem; }
+        
+        .modal-overlay { position: fixed; inset: 0; z-index: 100; background-color: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+        .modal-content { background: white; width: 100%; max-width: 360px; border-radius: 24px; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+        .img-modal { position: fixed; inset: 0; z-index: 110; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Masonry Grid for Journal Images */
+        .journal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; border-radius: 16px; overflow: hidden; margin-top: 12px; }
+        .journal-grid img { width: 100%; height: 150px; object-cover: cover; }
+        .journal-grid.single img { height: auto; max-height: 300px; grid-column: span 2; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="app" class="max-w-md mx-auto min-h-screen relative flex flex-col">
+
+        <header class="pt-8 px-5 pb-2 flex justify-between items-center relative">
+            <div class="flex-shrink-0 relative z-10 w-[120px]">
+                <h1 class="text-2xl font-bold text-sky-500 tracking-tight">Seoul Go!</h1>
+                <div class="mt-1 inline-block bg-sky-500 text-white text-[10px] px-3 py-1 rounded-full font-bold tracking-widest shadow-md transform -rotate-1">
+                    時光膠囊
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1.5 font-medium tracking-wider pl-1">2026.01.30 - 02.05</p>
+            </div>
+
+            <!-- Title Image (Fixed) -->
+            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[200px] flex justify-center items-center pointer-events-none z-0 mt-3">
+                <img src="title.png" class="h-auto w-full max-h-[100px] object-contain drop-shadow-sm opacity-95">
+            </div>
+
+            <!-- Weather Widget -->
+            <div v-if="currentWeather" class="flex-shrink-0 bg-white/80 backdrop-blur-sm border border-sky-100 shadow-sm rounded-2xl p-2 flex flex-col items-center min-w-[60px] animate-pulse-once relative z-10">
+                <span class="text-2xl mb-0.5">{{ currentWeather.icon }}</span>
+                <span class="text-[10px] font-bold text-slate-600">{{ currentWeather.temp }}</span>
+                <span class="text-[8px] text-slate-400">{{ currentWeather.desc }}</span>
+            </div>
+        </header>
+
+        <div v-if="currentTab === 'itinerary'" class="px-5 mt-4 overflow-x-auto hide-scrollbar flex space-x-3 pb-8 pt-4">
+            <button @click="activeDay = -1" class="day-card flex-shrink-0 w-16 h-20 flex flex-col items-center justify-center" :class="activeDay === -1 ? 'active text-sky-600' : 'inactive bg-white/50'"><span class="text-xs font-bold uppercase tracking-widest">PRE</span><span class="text-xl">📝</span></button>
+            <button v-for="(day, index) in days" :key="index" @click="activeDay = index" class="day-card flex-shrink-0 w-16 h-20 flex flex-col items-center justify-center" :class="activeDay === index ? 'active text-sky-600' : 'inactive bg-white/50'"><span class="text-[10px] font-bold uppercase text-slate-400 mb-0.5">DAY</span><span class="text-xl font-bold font-sans">{{ index + 1 }}</span><span class="text-[9px] font-medium mt-1 text-slate-400">{{ day.dateStr }}</span></button>
+        </div>
+
+        <main class="flex-1 px-5 space-y-5 overflow-y-auto hide-scrollbar mt-2">
+            <transition name="fade" mode="out-in">
+                
+                <div v-if="currentTab === 'itinerary'" key="itinerary" class="space-y-5 pb-10">
+                    <div v-if="activeDay === -1" class="space-y-3">
+                        <div class="bg-white rounded-3xl p-6 shadow-sm border border-sky-100 text-center">
+                            <h2 class="text-lg font-bold text-sky-500 mb-4 text-center">行前準備 Check</h2>
+                            <div class="space-y-4">
+                                <div v-for="(todo, tIdx) in preTripTodos" :key="todo.id" class="bg-slate-50 rounded-2xl p-4 text-left border border-slate-100">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <span class="text-sm font-bold text-slate-700 ml-1">{{ todo.text }}</span>
+                                        <button @click="removeTodo(tIdx)" class="text-slate-300 text-xs hover:text-red-400">✕</button>
+                                    </div>
+                                    <div class="grid grid-cols-5 gap-2">
+                                        <div v-for="m in members" :key="m.id" @click="toggleTodoStatus(todo, m.id)" class="flex flex-col items-center cursor-pointer group">
+                                            <div class="w-10 h-10 rounded-full border-2 transition-all overflow-hidden mb-1 relative" :class="todo.completedBy.includes(m.id) ? 'border-green-400 shadow-sm' : 'border-slate-200 grayscale opacity-60'">
+                                                <img :src="m.photo" class="w-full h-full object-cover">
+                                                <div v-if="todo.completedBy.includes(m.id)" class="absolute inset-0 bg-green-400/20 flex items-center justify-center text-white text-xs font-bold">✓</div>
+                                            </div>
+                                            <span class="text-[9px] font-bold text-center w-full truncate" :class="todo.completedBy.includes(m.id) ? 'text-green-600' : 'text-slate-400'">{{ m.name }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-6 flex space-x-2"><input v-model="newTodo" placeholder="新增事項..." class="flex-1 bg-slate-100 rounded-lg px-3 py-3 text-sm outline-none border border-transparent focus:border-sky-300 transition-all"><button @click="addTodo" class="bg-sky-400 text-white px-4 rounded-lg font-bold shadow-md">＋</button></div>
+                        </div>
+                    </div>
+                    
+                    <div v-if="activeDay >= 0" id="itinerary-list" class="space-y-4">
+                        <div v-if="activeDay === 0" class="ticket-card p-5 relative">
+                            <span class="absolute top-4 left-5 bg-sky-100 text-sky-600 text-[10px] px-3 py-1 rounded-full font-bold">去程</span><span class="absolute top-4 right-5 text-[10px] text-sky-500 font-bold tracking-widest">TPE → ICN</span>
+                            <div class="flex justify-between items-center mt-8 mb-2 px-2">
+                                <div class="text-center"><div class="text-3xl font-black text-slate-700 tracking-wider">TPE</div><div class="text-xs text-slate-500 mt-2 bg-slate-100 px-3 py-1 rounded-full font-medium">20:00</div></div>
+                                <div class="flex flex-col items-center flex-1 px-6 relative"><div class="mb-1 z-10"><svg class="w-6 h-6 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M21,16V14L13,9V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" transform="rotate(90 12 12)"/></svg></div><div class="w-full h-0.5 bg-sky-200 relative flex items-center justify-between"><div class="w-2 h-2 bg-sky-400 rounded-full -ml-1"></div><div class="w-2 h-2 bg-sky-400 rounded-full -mr-1"></div></div><span class="text-[10px] text-slate-400 mt-2 font-medium">IT 602</span></div>
+                                <div class="text-center"><div class="text-3xl font-black text-slate-700 tracking-wider">ICN</div><div class="text-xs text-slate-500 mt-2 bg-slate-100 px-3 py-1 rounded-full font-medium">23:30</div></div>
+                            </div>
+                        </div>
+                        <div v-if="activeDay === days.length - 1" class="ticket-card p-5 relative">
+                            <span class="absolute top-4 left-5 bg-pink-100 text-pink-600 text-[10px] px-3 py-1 rounded-full font-bold">回程</span><span class="absolute top-4 right-5 text-[10px] text-sky-500 font-bold tracking-widest">ICN → TPE</span>
+                            <div class="flex justify-between items-center mt-8 mb-2 px-2">
+                                <div class="text-center"><div class="text-3xl font-black text-slate-700 tracking-wider">ICN</div><div class="text-xs text-slate-500 mt-2 bg-slate-100 px-3 py-1 rounded-full font-medium">16:20</div></div>
+                                <div class="flex flex-col items-center flex-1 px-6 relative"><div class="mb-1 z-10"><svg class="w-6 h-6 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M21,16V14L13,9V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" transform="rotate(90 12 12)"/></svg></div><div class="w-full h-0.5 bg-sky-200 relative flex items-center justify-between"><div class="w-2 h-2 bg-sky-400 rounded-full -ml-1"></div><div class="w-2 h-2 bg-sky-400 rounded-full -mr-1"></div></div><span class="text-[10px] text-slate-400 mt-2 font-medium">KE 2027</span></div>
+                                <div class="text-center"><div class="text-3xl font-black text-slate-700 tracking-wider">TPE</div><div class="text-xs text-slate-500 mt-2 bg-slate-100 px-3 py-1 rounded-full font-medium">18:00</div></div>
+                            </div>
+                        </div>
+
+                        <button @click="openSpotModal(null)" class="w-full bg-amber-400 hover:bg-amber-300 text-white font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center space-x-2 text-sm transition-transform active:scale-98">
+                            <span class="bg-white/20 rounded-full w-5 h-5 flex items-center justify-center text-xs">＋</span><span>新增一個行程</span>
+                        </button>
+
+                        <div v-for="(spot, idx) in currentItinerary" :key="spot.id" :data-id="spot.id" @click="openSpotModal(spot, idx)" class="spot-card p-4 relative group cursor-pointer active:scale-98 transition-transform">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center space-x-2">
+                                    <div class="handle text-slate-300 cursor-grab px-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg></div>
+                                    <span class="bg-sky-100 text-sky-600 text-[10px] px-2 py-1 rounded-md font-bold">{{ categories.find(c => c.name === spot.category)?.icon }} {{ spot.category }}</span>
+                                </div>
+                                <span class="text-xs text-slate-400 font-mono">編輯 ></span>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-700">{{ spot.location }}</h3>
+                            <p v-if="spot.note" class="text-xs text-slate-400 mt-1">{{ spot.note }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else-if="currentTab === 'map'" key="map" class="h-[75vh] rounded-3xl overflow-hidden border-4 border-white shadow-lg relative"><div id="map" class="h-full w-full bg-slate-100"></div></div>
+
+                <div v-else-if="currentTab === 'journal'" key="journal" class="space-y-5 pb-24">
+                    <button @click="openJournalModal(null)" class="w-full bg-gradient-to-r from-sky-400 to-indigo-400 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-sky-200 flex items-center justify-center space-x-2 active:scale-98 transition-transform">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        <span>寫下今天的回憶...</span>
+                    </button>
+
+                    <div v-if="journals.length === 0" class="text-center py-10 text-slate-300 space-y-2">
+                        <div class="text-4xl">📸</div>
+                        <p class="text-xs">還沒有日記，快來記錄第一篇！</p>
+                    </div>
+
+                    <div v-for="post in journals" :key="post.id" class="journal-card p-5 relative group">
+                        <button @click.stop="openJournalModal(post)" class="absolute top-4 right-4 text-slate-300 hover:text-sky-500 z-10 bg-white/50 rounded-full p-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                        
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-full border border-slate-100 overflow-hidden shadow-sm"><img :src="members.find(m => m.id === post.authorId)?.photo" class="w-full h-full object-cover"></div>
+                                <div>
+                                    <div class="text-sm font-bold text-slate-700">{{ members.find(m => m.id === post.authorId)?.name }}</div>
+                                    <div class="text-[10px] text-slate-400 font-medium">{{ post.date }}</div>
+                                </div>
+                            </div>
+                            <div class="text-[10px] bg-slate-50 text-slate-400 px-2 py-1 rounded-lg mr-6">{{ post.timeStr }}</div>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed whitespace-pre-line mb-2">{{ post.text }}</p>
+                        
+                        <div v-if="post.images && post.images.length > 0" class="journal-grid" :class="{'single': post.images.length === 1}">
+                            <img v-for="(img, idx) in post.images" :key="idx" :src="img" @click="openImagePreview(img)" class="rounded-lg shadow-sm border border-slate-100 cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else-if="currentTab === 'ledger'" key="ledger" class="space-y-6 pb-24">
+                    <div class="bg-white rounded-3xl p-5 shadow-sm border border-sky-100">
+                        <div class="flex justify-between items-center mb-3"><h2 class="text-sm font-bold text-slate-500">成員設定</h2><span class="text-[10px] text-sky-400 bg-sky-50 px-2 py-1 rounded-full">點擊頭像換照</span></div>
+                        <div class="flex justify-between"><div v-for="m in members" :key="m.id" class="flex flex-col items-center w-16 group"><div @click="triggerUpload(m.id)" class="w-16 h-16 rounded-full border-2 border-slate-100 overflow-hidden cursor-pointer shadow-sm relative group-hover:border-sky-300 transition-all"><img :src="m.photo" class="w-full h-full object-cover"><div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center text-white text-[8px]">更換</div><input :id="'file-'+m.id" type="file" class="hidden" @change="e => updatePhoto(e, m.id)"></div><input v-model="m.name" class="w-full text-center text-[10px] mt-1 text-slate-600 bg-transparent outline-none border-b border-transparent focus:border-sky-300"></div></div>
+                    </div>
+
+                    <div class="settlement-card p-6 shadow-sm relative overflow-hidden">
+                        <div class="flex justify-between items-center border-b border-sky-100 pb-2 mb-2">
+                            <div class="flex items-center space-x-2"><h2 class="text-xs font-bold text-slate-600">分帳與總覽</h2><div class="flex items-center space-x-1 bg-slate-50 rounded px-1.5 py-0.5"><span class="text-[9px] text-slate-400">1₩=</span><input v-model.number="exchangeRate" type="number" step="0.0001" class="w-10 text-[9px] bg-transparent text-sky-600 font-bold outline-none border-b border-sky-100 text-center"></div></div><span class="text-[9px] text-slate-300">台幣計價</span>
+                        </div>
+                        <div class="space-y-1 mb-3">
+                            <div v-if="settlements.length === 0" class="text-center text-[10px] text-slate-300 py-1">無須結算 🎉</div>
+                            <div v-for="(s, idx) in settlements" :key="idx" class="flex items-center justify-between text-[10px] text-slate-600 bg-slate-50 px-2 py-1 rounded"><span><strong class="text-red-400">{{ s.fromName }}</strong> <span class="text-slate-300">➜</span> <strong class="text-green-500">{{ s.toName }}</strong></span><span class="font-mono font-bold text-sky-500">${{ s.amount.toLocaleString() }}</span></div>
+                        </div>
+                        <div class="flex justify-between items-end pt-2 border-t border-sky-50 px-1">
+                            <div v-for="summary in memberSummaries" :key="summary.id" @click="openMemberDetail(summary)" class="flex flex-col items-center cursor-pointer active:scale-95 transition-transform w-14">
+                                <div class="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden mb-1 ring-1 ring-slate-100"><img :src="summary.photo" class="w-full h-full object-cover"></div>
+                                <span class="text-[9px] font-bold text-slate-500">{{ summary.name }}</span>
+                                <span class="text-[10px] font-mono font-bold text-sky-600 bg-sky-50 px-1.5 rounded-full mt-0.5">${{ Math.round(summary.spent).toLocaleString() }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button @click="openExpenseModal(null)" class="w-full bg-amber-400 hover:bg-amber-300 text-white font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center space-x-2 text-sm transition-transform active:scale-98">
+                        <span class="bg-white/20 rounded-full w-5 h-5 flex items-center justify-center text-xs">＋</span><span>新增一筆支出</span>
+                    </button>
+
+                    <div class="space-y-4 pb-2">
+                        <div class="flex justify-between items-end px-2"><h2 class="text-sky-500 font-bold tracking-widest text-xs">EXPENSE LIST</h2><span class="text-[9px] text-slate-400">依日期分組</span></div>
+                        
+                        <div v-for="(group, dateKey) in groupedExpenses" :key="dateKey">
+                            <div class="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm px-4 py-1.5 rounded-lg mb-2 flex items-center justify-between shadow-sm">
+                                <span class="text-xs font-bold text-slate-600">{{ getDayLabel(dateKey) }}</span>
+                                <span class="text-[10px] font-mono text-slate-400">NT$ {{ Math.round(group.total).toLocaleString() }}</span>
+                            </div>
+                            <transition-group name="list" tag="div" class="space-y-3">
+                                <div v-for="exp in group.items" :key="exp.id" @click="openExpenseModal(exp)" class="expense-card p-4 relative cursor-pointer">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <div class="info-pill bg-sky-50 text-sky-600 px-3">{{ categories.find(c => c.name === exp.category)?.icon }} {{ exp.category }}</div>
+                                        <div class="bg-slate-50 text-slate-500 px-3 h-[28px] flex items-center rounded-md space-x-2 border border-slate-100">
+                                            <span class="text-[10px] font-bold">{{ days.find(d => d.full === exp.date)?.dateStr }}</span>
+                                            <span class="text-slate-300 text-[10px]">|</span>
+                                            <span class="text-xs font-mono font-bold">{{ exp.time }}</span>
+                                        </div>
+                                    </div>
+                                    <h3 class="text-lg font-bold text-slate-700 pl-1 mb-2">{{ exp.item }}</h3>
+                                    <div class="flex justify-between items-center border-t border-slate-50 pt-2">
+                                        <div class="info-pill bg-slate-50 border border-slate-100 px-3 text-slate-500"><span class="text-[9px] mr-2 text-slate-400">付款人</span>{{ members.find(m => m.id === exp.payerId)?.name }}</div>
+                                        <div class="flex items-center space-x-2"><span class="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{{ exp.currency }}</span><span class="text-2xl font-black text-sky-500">{{ exp.amount.toLocaleString() }}</span></div>
+                                    </div>
+                                    <div class="flex justify-between items-center mt-2 pl-1">
+                                        <div class="text-xs text-slate-400 italic truncate max-w-[120px]">{{ exp.note }}</div>
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-[9px] text-slate-300">分帳:</span>
+                                            <div class="flex -space-x-1">
+                                                <div v-for="pid in exp.participants" :key="pid" class="w-6 h-6 rounded-full border border-white overflow-hidden shadow-sm"><img :src="members.find(m=>m.id===pid)?.photo" class="w-full h-full object-cover"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </transition-group>
+                        </div>
+                        <div v-if="expenses.length === 0" class="text-center text-xs text-slate-300 py-10">目前沒有支出紀錄</div>
+                    </div>
+                </div>
+            </transition>
+        </main>
+
+        <nav class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-white rounded-full shadow-xl p-2 flex items-center space-x-1 mb-2 safe-bottom w-[80%] max-w-sm justify-between">
+            <button @click="currentTab = 'itinerary'" :class="currentTab === 'itinerary' ? 'text-sky-500' : 'text-slate-400'" class="flex-1 flex flex-col items-center py-1 px-2 rounded-full transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span class="text-[10px] font-medium">行程</span></button>
+            <button @click="currentTab = 'journal'" :class="currentTab === 'journal' ? 'text-sky-500' : 'text-slate-400'" class="flex-1 flex flex-col items-center py-1 px-2 rounded-full transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg><span class="text-[10px] font-medium">日誌</span></button>
+            <button @click="currentTab = 'ledger'" :class="currentTab === 'ledger' ? 'text-sky-500' : 'text-slate-400'" class="flex-1 flex flex-col items-center py-1 px-2 rounded-full transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span class="text-[10px] font-medium">記帳</span></button>
+            <button @click="showShoppingModal = true" class="flex-1 flex flex-col items-center py-1 px-2 rounded-full text-slate-400 hover:text-sky-500 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg><span class="text-[10px] font-medium">購物</span></button>
+        </nav>
+
+        <div v-if="showExpenseModal" class="modal-overlay" @click.self="showExpenseModal = false">
+            <div class="modal-content space-y-4">
+                <h3 class="text-lg font-bold text-slate-700 text-center">{{ editingExpense.id ? '編輯支出' : '新增支出' }}</h3>
+                
+                <div class="flex space-x-2 mb-2">
+                    <div class="relative flex-1">
+                        <select v-model="editingExpense.category" class="category-select bg-sky-50 text-sky-600 text-sm font-bold px-3 py-3 rounded-xl outline-none w-full"><option v-for="cat in categories" :value="cat.name">{{ cat.icon }} {{ cat.name }}</option></select>
+                    </div>
+                    <button @click="promptAddCategory" class="bg-slate-50 text-slate-400 hover:text-sky-500 rounded-xl px-3 text-xl font-bold transition-colors">+</button>
+                </div>
+
+                <div class="flex space-x-2 mb-2">
+                    <select v-model="editingExpense.date" class="bg-slate-50 text-slate-600 text-sm font-bold px-3 py-3 rounded-xl outline-none flex-[1.3] truncate">
+                        <option v-for="(d, i) in days" :value="d.full">{{ d.full }} (DAY {{ i + 1 }})</option>
+                    </select>
+                    <input type="time" v-model="editingExpense.time" class="bg-slate-50 text-slate-600 text-sm font-bold px-1 py-3 rounded-xl outline-none flex-1 text-center min-w-[110px]">
+                </div>
+
+                <input v-model="editingExpense.item" class="w-full text-lg font-bold border-b-2 border-slate-100 py-2 outline-none focus:border-sky-400 text-center placeholder-slate-300" placeholder="消費項目名稱">
+                
+                <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
+                    <div class="flex flex-col items-start"><span class="text-[10px] text-slate-400 mb-1">付款人</span><select v-model="editingExpense.payerId" class="bg-white border border-slate-200 text-xs font-bold py-1 px-2 rounded outline-none"><option v-for="m in members" :value="m.id">{{ m.name }}</option></select></div>
+                    <div class="flex items-end space-x-2"><select v-model="editingExpense.currency" class="bg-transparent text-xs font-bold text-slate-400 outline-none mb-1"><option>KRW</option><option>TWD</option></select><input v-model.number="editingExpense.amount" type="number" class="bg-transparent text-2xl font-black text-sky-500 w-28 text-right outline-none" placeholder="0"></div>
+                </div>
+                
+                <div>
+                    <p class="text-[10px] text-slate-400 mb-2">分攤成員 (點擊切換)</p>
+                    <div class="flex space-x-2"><div v-for="m in members" :key="m.id" @click="toggleEditParticipant(m.id)" class="w-8 h-8 rounded-full border-2 overflow-hidden transition-all" :class="editingExpense.participants.includes(m.id) ? 'border-sky-400 opacity-100' : 'border-slate-100 opacity-30 grayscale'"><img :src="m.photo" class="w-full h-full object-cover"></div></div>
+                </div>
+
+                <div class="flex space-x-2 items-start">
+                    <textarea v-model="editingExpense.note" class="flex-1 bg-slate-50 rounded-xl px-3 py-3 text-sm outline-none resize-none h-12" placeholder="備註..."></textarea>
+                    
+                    <div v-if="editingExpense.receipt" class="relative w-12 h-12 flex-shrink-0 group">
+                        <img :src="editingExpense.receipt" class="w-full h-full object-cover rounded-xl border border-slate-200 shadow-sm" @click="openImagePreview(editingExpense.receipt)">
+                        <div class="absolute -top-2 -right-2 bg-white rounded-full p-1.5 shadow-md border border-slate-100 cursor-pointer z-10 hover:bg-slate-50" @click="triggerReceiptUpload">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        </div>
+                        <div class="absolute bottom-0 right-0 bg-black/50 rounded-tl-lg rounded-br-xl p-0.5 pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+                    </div>
+                    <div v-else class="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center cursor-pointer text-slate-300 hover:text-sky-400 hover:bg-sky-50 transition-all flex-shrink-0" @click="triggerReceiptUpload">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </div>
+                    <input id="receiptInput" type="file" class="hidden" accept="image/*" @change="handleReceiptUpload">
+                </div>
+
+                <button @click="saveExpense" class="w-full bg-sky-500 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-transform">儲存</button>
+            </div>
+        </div>
+
+        <div v-if="showMemberDetailModal" class="fixed inset-0 z-50 bg-slate-800/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative max-h-[80vh] flex flex-col">
+                <button @click="showMemberDetailModal = false" class="absolute top-4 right-4 text-slate-400 text-xl">✕</button>
+                <div class="text-center mb-6"><div class="w-16 h-16 rounded-full border-2 border-sky-100 mx-auto overflow-hidden mb-2 shadow-sm"><img :src="selectedMember?.photo" class="w-full h-full object-cover"></div><h3 class="text-lg font-bold text-slate-700">{{ selectedMember?.name }} 的消費明細</h3><p class="text-xs text-sky-500 font-mono mt-1">總計: NT$ {{ Math.round(selectedMemberTotal).toLocaleString() }}</p></div>
+                <div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar"><div v-for="exp in selectedMemberExpenses" :key="exp.id" class="flex justify-between items-start border-b border-slate-50 pb-2"><div><div class="text-xs font-bold text-slate-600">{{ exp.item }}</div><div class="text-[10px] text-slate-400">{{ exp.date }} · {{ exp.time }} · {{ exp.category }}</div></div><div class="text-right"><div class="text-xs font-bold text-slate-700">NT$ {{ Math.round(getShareAmount(exp)).toLocaleString() }}</div><div v-if="exp.currency === 'KRW'" class="text-[9px] text-slate-300">(₩ {{ Math.round(exp.amount / exp.participants.length).toLocaleString() }})</div></div></div><div v-if="selectedMemberExpenses.length === 0" class="text-center text-xs text-slate-300 py-10">暫無消費紀錄</div></div>
+            </div>
+        </div>
+
+        <!-- Image Preview Modal -->
+        <div v-if="previewImageUrl" class="img-modal" @click="previewImageUrl = null">
+            <img :src="previewImageUrl" class="max-w-full max-h-full p-4 object-contain">
+            <button class="absolute top-4 right-4 text-white text-2xl bg-black/50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, nextTick, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const currentTab = ref('itinerary');
+                const activeDay = ref(0);
+                const showShoppingModal = ref(false);
+                const showExpenseModal = ref(false);
+                const showSpotModal = ref(false);
+                const showJournalModal = ref(false);
+                const editingExpense = ref({});
+                const editingSpot = ref({});
+                const editingSpotIdx = ref(-1);
+                const editingJournal = ref({});
+                const activeShopMember = ref(1);
+                const exchangeRate = ref(0.0245); 
+                const showMemberDetailModal = ref(false);
+                const selectedMemberId = ref(null);
+                
+                // Group Photo State
+                const groupPhoto = ref('https://cdn-icons-png.flaticon.com/512/1256/1256661.png');
+                const updateGroupPhoto = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => groupPhoto.value = evt.target.result;
+                        reader.readAsDataURL(file);
+                    }
+                };
+
+                // Image Preview
+                const previewImageUrl = ref(null);
+                const openImagePreview = (url) => previewImageUrl.value = url;
+                const triggerReceiptUpload = () => document.getElementById('receiptInput').click();
+                const triggerJournalUpload = () => document.getElementById('journalInput').click();
+                
+                const categories = ref([{ name: '飲食', icon: '🍜' }, { name: '住宿', icon: '🏨' }, { name: '交通', icon: '🚇' }, { name: '購物', icon: '🛍️' }, { name: '娛樂', icon: '🎡' }, { name: '其他', icon: '🔖' }]);
+                const days = [{ dateStr: '1/30', full: '2026-01-30' }, { dateStr: '1/31', full: '2026-01-31' }, { dateStr: '2/01', full: '2026-02-01' }, { dateStr: '2/02', full: '2026-02-02' }, { dateStr: '2/03', full: '2026-02-03' }, { dateStr: '2/04', full: '2026-02-04' }, { dateStr: '2/05', full: '2026-02-05' }];
+                const members = ref([{ id: 1, name: '我', photo: 'https://i.pravatar.cc/150?u=1' }, { id: 2, name: '旅伴A', photo: 'https://i.pravatar.cc/150?u=2' }, { id: 3, name: '旅伴B', photo: 'https://i.pravatar.cc/150?u=3' }, { id: 4, name: '旅伴C', photo: 'https://i.pravatar.cc/150?u=4' }, { id: 5, name: '旅伴D', photo: 'https://i.pravatar.cc/150?u=5' }]);
+                
+                // Weather Data
+                const weatherData = {
+                    '2026-01-30': { icon: '🌤️', temp: '-1°C', desc: '多雲' },
+                    '2026-01-31': { icon: '❄️', temp: '-4°C', desc: '小雪' },
+                    '2026-02-01': { icon: '☀️', temp: '-2°C', desc: '晴朗' },
+                    '2026-02-02': { icon: '🌤️', temp: '0°C', desc: '晴時多雲' },
+                    '2026-02-03': { icon: '☁️', temp: '-3°C', desc: '陰天' },
+                    '2026-02-04': { icon: '🌨️', temp: '-6°C', desc: '大雪' },
+                    '2026-02-05': { icon: '✈️', temp: '-2°C', desc: '返程' },
+                };
+                const currentWeather = computed(() => activeDay.value >= 0 ? weatherData[days[activeDay.value].full] : null);
+
+                const itineraries = ref({
+                    0: [{ id: 1, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    1: [{ id: 2, category: '景點', location: '弘大', note: '' }, { id: 3, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    2: [{ id: 4, category: '娛樂', location: '一日遊', note: '' }, { id: 5, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    3: [{ id: 6, category: '娛樂', location: '康島玩雪雪橇', note: '10:00~17:00' }, { id: 7, category: '飲食', location: 'beton', note: '' }, { id: 8, category: '飲食', location: 'ODE', note: '' }, { id: 9, category: '景點', location: '聖水', note: '' }, { id: 10, category: '景點', location: '經紀公司', note: '' }, { id: 11, category: '景點', location: '星空圖書館', note: '' }, { id: 12, category: '飲食', location: 'Puradak炸雞', note: '' }, { id: 13, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    4: [{ id: 14, category: '飲食', location: '廣藏市場', note: '' }, { id: 15, category: '購物', location: '明洞', note: '' }, { id: 16, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    5: [{ id: 17, category: '其他', location: '醫美', note: '' }, { id: 18, category: '購物', location: '東大門', note: '' }, { id: 19, category: '娛樂', location: '溜冰', note: '' }, { id: 20, category: '住宿', location: 'Momoho Hongdae', note: '' }],
+                    6: [{ id: 21, category: '住宿', location: 'Momoho Hongdae', note: '' }]
+                });
+                const currentItinerary = computed(() => itineraries.value[activeDay.value] || []);
+                
+                // Journals
+                const journals = ref([]);
+                const openJournalModal = (post = null) => {
+                    if (post) {
+                        editingJournal.value = JSON.parse(JSON.stringify(post));
+                    } else {
+                        const now = new Date();
+                        const dateStr = now.toISOString().split('T')[0];
+                        const timeStr = now.toTimeString().slice(0, 5);
+                        editingJournal.value = { id: null, authorId: 1, date: dateStr, timeStr: timeStr, text: '', images: [] };
+                    }
+                    showJournalModal.value = true;
+                };
+                const handleJournalUpload = (e) => {
+                    const files = e.target.files;
+                    if (files) {
+                        Array.from(files).forEach(file => {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => editingJournal.value.images.push(evt.target.result);
+                            reader.readAsDataURL(file);
+                        });
+                    }
+                };
+                const saveJournal = () => {
+                    if (editingJournal.value.id) {
+                        const idx = journals.value.findIndex(j => j.id === editingJournal.value.id);
+                        if (idx > -1) journals.value[idx] = { ...editingJournal.value };
+                    } else if (editingJournal.value.text || editingJournal.value.images.length > 0) {
+                        journals.value.unshift({ ...editingJournal.value, id: Date.now() });
+                    }
+                    showJournalModal.value = false;
+                };
+
+                const expenses = ref([{ id: 1, date: '2026-01-30', time: '18:30', category: '飲食', item: '第一餐烤肉', amount: 85000, currency: 'KRW', payerId: 1, participants: [1,2,3,4,5], note: '', receipt: null }]);
+                const sortedExpenses = computed(() => [...expenses.value].sort((a,b) => b.id - a.id));
+                const groupedExpenses = computed(() => {
+                    const groups = {};
+                    const sorted = [...expenses.value].sort((a, b) => {
+                        if (a.date !== b.date) return b.date.localeCompare(a.date);
+                        return b.time.localeCompare(a.time);
+                    });
+                    sorted.forEach(exp => {
+                        if (!groups[exp.date]) groups[exp.date] = { items: [], total: 0 };
+                        groups[exp.date].items.push(exp);
+                        // Approximate total for header display in TWD
+                        const amountInTwd = exp.currency === 'KRW' ? (exp.amount * exchangeRate.value) : exp.amount;
+                        groups[exp.date].total += amountInTwd;
+                    });
+                    return groups;
+                });
+                const getDayLabel = (dateStr) => {
+                    const idx = days.findIndex(d => d.full === dateStr);
+                    return `${dateStr} ${idx >= 0 ? '(DAY ' + (idx + 1) + ')' : ''}`;
+                };
+
+                const preTripTodos = ref([{ id:1, text:'買網卡', completedBy:[]}]);
+                const newTodo = ref('');
+                const addTodo = () => { if(newTodo.value) preTripTodos.value.push({id:Date.now(), text:newTodo.value, completedBy:[]}); newTodo.value=''; };
+                const removeTodo = (idx) => preTripTodos.value.splice(idx, 1);
+                const toggleTodoStatus = (todo, uid) => { const idx = todo.completedBy.indexOf(uid); idx > -1 ? todo.completedBy.splice(idx,1) : todo.completedBy.push(uid); };
+
+                const shoppingList = ref([{ id: 1, text: 'Olive Young 面膜', done: false, ownerId: 1 }, { id: 2, text: 'Gentle Monster 墨鏡', done: false, ownerId: 1 }]);
+                const newShopItem = ref('');
+                const currentMemberShoppingList = computed(() => shoppingList.value.filter(item => item.ownerId === activeShopMember.value));
+                const addShopItem = () => { if (newShopItem.value) { shoppingList.value.push({ id: Date.now(), text: newShopItem.value, done: false, ownerId: activeShopMember.value }); newShopItem.value = ''; }};
+                const removeShopItem = (id) => { const idx = shoppingList.value.findIndex(i => i.id === id); if (idx > -1) shoppingList.value.splice(idx, 1); };
+                const getMemberPendingCount = (memberId) => shoppingList.value.filter(i => i.ownerId === memberId && !i.done).length;
+                const totalShoppingCount = computed(() => shoppingList.value.filter(i => !i.done).length);
+
+                const triggerUpload = (id) => document.getElementById(`file-${id}`).click();
+                const updatePhoto = (e, id) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (evt) => { const m = members.value.find(x => x.id === id); if(m) m.photo = evt.target.result; }; reader.readAsDataURL(file); } };
+
+                // Spot Logic
+                const openSpotModal = (spot, idx = -1) => {
+                    editingSpotIdx.value = idx;
+                    if (spot) { editingSpot.value = { ...spot }; } 
+                    else { editingSpot.value = { id: null, category: '景點', location: '', note: '' }; }
+                    showSpotModal.value = true;
+                };
+                const saveSpot = () => {
+                    if (!itineraries.value[activeDay.value]) itineraries.value[activeDay.value] = [];
+                    if (editingSpot.value.id) { if (editingSpotIdx.value > -1) { itineraries.value[activeDay.value][editingSpotIdx.value] = { ...editingSpot.value }; } } 
+                    else { editingSpot.value.id = Date.now(); itineraries.value[activeDay.value].push({ ...editingSpot.value }); }
+                    showSpotModal.value = false;
+                };
+                const deleteSpot = () => { if (editingSpotIdx.value > -1) { itineraries.value[activeDay.value].splice(editingSpotIdx.value, 1); } showSpotModal.value = false; };
+
+                // Expense Logic
+                const openExpenseModal = (exp) => {
+                    if (exp) { editingExpense.value = JSON.parse(JSON.stringify(exp)); } 
+                    else {
+                        const now = new Date(); const timeStr = now.toTimeString().slice(0,5);
+                        editingExpense.value = { id: null, date: days[0].full, time: timeStr, category: '飲食', item: '', amount: null, currency: 'KRW', payerId: 1, participants: [1,2,3,4,5], note: '', receipt: null };
+                    }
+                    showExpenseModal.value = true;
+                };
+                const promptAddCategory = () => { const newCat = prompt("請輸入新分類名稱:"); if(newCat && !categories.value.find(c=>c.name===newCat)) { categories.value.push({ name: newCat, icon: '🔖' }); } };
+                const toggleEditParticipant = (uid) => { const idx = editingExpense.value.participants.indexOf(uid); if (idx > -1) editingExpense.value.participants.splice(idx, 1); else editingExpense.value.participants.push(uid); };
+                const handleReceiptUpload = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (evt) => editingExpense.value.receipt = evt.target.result; reader.readAsDataURL(file); } };
+                const saveExpense = () => {
+                    if (editingExpense.value.id) { const idx = expenses.value.findIndex(e => e.id === editingExpense.value.id); if (idx > -1) expenses.value[idx] = { ...editingExpense.value }; } 
+                    else { editingExpense.value.id = Date.now(); expenses.value.push({ ...editingExpense.value }); }
+                    showExpenseModal.value = false;
+                };
+
+                const getUnifiedBalances = () => {
+                    const balances = {}; members.value.forEach(m => balances[m.id] = 0);
+                    expenses.value.filter(e => e.amount).forEach(exp => {
+                        const amountInTwd = exp.currency === 'KRW' ? (exp.amount * exchangeRate.value) : exp.amount;
+                        const splitAmount = amountInTwd / exp.participants.length;
+                        if (balances[exp.payerId] !== undefined) balances[exp.payerId] += amountInTwd;
+                        exp.participants.forEach(pid => { if (balances[pid] !== undefined) balances[pid] -= splitAmount; });
+                    });
+                    return balances;
+                };
+                const settlements = computed(() => {
+                    const bal = getUnifiedBalances();
+                    let debtors = [], creditors = [];
+                    for (const [id, amount] of Object.entries(bal)) { if (amount < -1) debtors.push({ id: parseInt(id), amount: amount }); if (amount > 1) creditors.push({ id: parseInt(id), amount: amount }); }
+                    debtors.sort((a, b) => a.amount - b.amount); creditors.sort((a, b) => b.amount - a.amount);
+                    const result = []; let i = 0; let j = 0;
+                    while (i < debtors.length && j < creditors.length) {
+                        const debtor = debtors[i]; const creditor = creditors[j];
+                        const amount = Math.min(Math.abs(debtor.amount), creditor.amount);
+                        result.push({ from: debtor.id, to: creditor.id, fromName: members.value.find(m => m.id === debtor.id)?.name, toName: members.value.find(m => m.id === creditor.id)?.name, amount: Math.round(amount) });
+                        debtor.amount += amount; creditor.amount -= amount; if (Math.abs(debtor.amount) < 1) i++; if (creditor.amount < 1) j++;
+                    }
+                    return result;
+                });
+                const memberSummaries = computed(() => {
+                    return members.value.map(m => {
+                        let spent = 0;
+                        expenses.value.filter(e => e.amount).forEach(exp => {
+                            const amountInTwd = exp.currency === 'KRW' ? (exp.amount * exchangeRate.value) : exp.amount;
+                            if (exp.participants.includes(m.id)) spent += (amountInTwd / exp.participants.length);
+                        });
+                        return { id: m.id, name: m.name, photo: m.photo, spent: spent };
+                    });
+                });
+
+                const openMemberDetail = (member) => { selectedMemberId.value = member.id; showMemberDetailModal.value = true; };
+                const selectedMember = computed(() => members.value.find(m => m.id === selectedMemberId.value));
+                const selectedMemberExpenses = computed(() => { if (!selectedMemberId.value) return []; return sortedExpenses.value.filter(exp => exp.participants.includes(selectedMemberId.value)); });
+                const getShareAmount = (exp) => { const amountInTwd = exp.currency === 'KRW' ? (exp.amount * exchangeRate.value) : exp.amount; return amountInTwd / exp.participants.length; };
+                const selectedMemberTotal = computed(() => selectedMemberExpenses.value.reduce((sum, exp) => sum + getShareAmount(exp), 0));
+
+                // Initialize Sortable
+                watch(currentTab, (val) => {
+                    if (val === 'itinerary') {
+                        nextTick(() => {
+                            const el = document.getElementById('itinerary-list');
+                            if(el) Sortable.create(el, { handle: '.handle', animation: 150, onEnd: (evt) => {
+                                const item = itineraries.value[activeDay.value].splice(evt.oldIndex, 1)[0];
+                                itineraries.value[activeDay.value].splice(evt.newIndex, 0, item);
+                            }});
+                        });
+                    }
+                    if(val === 'map') nextTick(initMap);
+                });
+                watch(activeDay, () => {
+                    if(currentTab.value === 'itinerary') {
+                        nextTick(() => {
+                            const el = document.getElementById('itinerary-list');
+                            if(el) Sortable.create(el, { handle: '.handle', animation: 150, onEnd: (evt) => {
+                                const item = itineraries.value[activeDay.value].splice(evt.oldIndex, 1)[0];
+                                itineraries.value[activeDay.value].splice(evt.newIndex, 0, item);
+                            }});
+                        });
+                    }
+                });
+
+                let map;
+                const initMap = () => { if(map) return; map = L.map('map').setView([37.5665, 126.9780], 13); L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map); };
+                onMounted(() => {
+                    const el = document.getElementById('itinerary-list');
+                    if(el) Sortable.create(el, { handle: '.handle', animation: 150, onEnd: (evt) => {
+                        const item = itineraries.value[activeDay.value].splice(evt.oldIndex, 1)[0];
+                        itineraries.value[activeDay.value].splice(evt.newIndex, 0, item);
+                    }});
+                });
+
+                return {
+                    currentTab, activeDay, days, itineraries, currentItinerary,
+                    preTripTodos, newTodo, addTodo, toggleTodoStatus, removeTodo,
+                    showShoppingModal, totalShoppingCount,
+                    showSpotModal, openSpotModal, editingSpot, saveSpot, deleteSpot,
+                    showExpenseModal, openExpenseModal, editingExpense, saveExpense, toggleEditParticipant, handleReceiptUpload,
+                    expenses, sortedExpenses, groupedExpenses, getDayLabel, members, categories, memberSummaries, exchangeRate, settlements,
+                    showMemberDetailModal, openMemberDetail, selectedMember, selectedMemberExpenses, getShareAmount, selectedMemberTotal,
+                    triggerUpload, updatePhoto, activeShopMember, currentMemberShoppingList, newShopItem, addShopItem, removeShopItem, getMemberPendingCount,
+                    promptAddCategory, previewImageUrl, openImagePreview, triggerReceiptUpload,
+                    journals, showJournalModal, openJournalModal, editingJournal, handleJournalUpload, saveJournal, triggerJournalUpload,
+                    currentWeather,
+                    groupPhoto, updateGroupPhoto, triggerUpload
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>--- END OF FILE index.html ---
