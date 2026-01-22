@@ -66,7 +66,7 @@
             </div>
 
             <!-- Title Image (Fixed) -->
-            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[200px] flex justify-center items-center pointer-events-none z-0 mt-3 ml-10">
+            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[200px] flex justify-center items-center pointer-events-none z-0 mt-3">
                 <img src="title.png" class="h-auto w-full max-h-[100px] object-contain drop-shadow-sm opacity-95">
             </div>
 
@@ -189,7 +189,7 @@
 
                     <div class="settlement-card p-6 shadow-sm relative overflow-hidden">
                         <div class="flex justify-between items-center border-b border-sky-100 pb-2 mb-2">
-                            <div class="flex items-center space-x-2"><h2 class="text-xs font-bold text-slate-600">分帳與總覽</h2><div class="flex items-center space-x-1 bg-slate-50 rounded px-1.5 py-0.5"><span class="text-[9px] text-slate-400">1₩=</span><input v-model.number="exchangeRate" type="number" step="0.0001" class="w-16 text-[9px] bg-transparent text-sky-600 font-bold outline-none border-b border-sky-100 text-center"></div></div><span class="text-[9px] text-slate-300">台幣計價</span>
+                            <div class="flex items-center space-x-2"><h2 class="text-xs font-bold text-slate-600">分帳與總覽</h2><div class="flex items-center space-x-1 bg-slate-50 rounded px-1.5 py-0.5"><span class="text-[9px] text-slate-400">1₩=</span><input v-model.number="exchangeRate" type="number" step="0.0001" class="w-10 text-[9px] bg-transparent text-sky-600 font-bold outline-none border-b border-sky-100 text-center"></div></div><span class="text-[9px] text-slate-300">台幣計價</span>
                         </div>
                         <div class="space-y-1 mb-3">
                             <div v-if="settlements.length === 0" class="text-center text-[10px] text-slate-300 py-1">無須結算 🎉</div>
@@ -340,7 +340,7 @@
                 const editingSpotIdx = ref(-1);
                 const editingJournal = ref({});
                 const activeShopMember = ref(1);
-                const exchangeRate = ref(0.0); 
+                const exchangeRate = ref(0.0245); 
                 const showMemberDetailModal = ref(false);
                 const selectedMemberId = ref(null);
                 
