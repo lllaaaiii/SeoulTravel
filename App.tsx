@@ -137,37 +137,45 @@ const App: React.FC = () => {
       members.forEach(m => { memberMap[m.id] = m.name; });
 
       // 1. 行程表
-      const eventsSnap = await getDocs(query(collection(db, 'events'), orderBy('date'), orderBy('time')));
-      const eventsData = eventsSnap.docs.map(doc => {
-        const d = doc.data();
-        return {
-          '日期': d.date || '',
-          '時間': d.time || '',
-          '分類': d.category || '',
-          '標題': d.title || '',
-          '地點': d.location || '',
-          '備註': d.notes || ''
-        };
-      });
+      const eventsSnap = await getDocs(collection(db, 'events'));
+      const eventsData = eventsSnap.docs.map(doc => doc.data())
+        .sort((a, b) => {
+          if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
+          return (a.time || '').localeCompare(b.time || '');
+        })
+        .map(d => {
+          return {
+            '日期': d.date || '',
+            '時間': d.time || '',
+            '分類': d.category || '',
+            '標題': d.title || '',
+            '地點': d.location || '',
+            '備註': d.notes || ''
+          };
+        });
       const wsEvents = XLSX.utils.json_to_sheet(eventsData);
       XLSX.utils.book_append_sheet(wb, wsEvents, "行程表");
 
       // 2. 記帳本
-      const expensesSnap = await getDocs(query(collection(db, 'expenses'), orderBy('date', 'desc'), orderBy('time', 'desc')));
-      const expensesData = expensesSnap.docs.map(doc => {
-        const d = doc.data();
-        const splitNames = (d.splitWithIds || []).map((id: string) => memberMap[id] || id).join(', ');
-        return {
-          '日期': d.date || '',
-          '時間': d.time || '',
-          '項目': d.description || '',
-          '分類': d.category || '',
-          '韓幣(KRW)': d.amountKRW || 0,
-          '台幣(TWD)': d.amountTWD || 0,
-          '付款人': memberMap[d.payerId] || d.payerId || '',
-          '分攤成員': splitNames
-        };
-      });
+      const expensesSnap = await getDocs(collection(db, 'expenses'));
+      const expensesData = expensesSnap.docs.map(doc => doc.data())
+        .sort((a, b) => {
+          if (a.date !== b.date) return (b.date || '').localeCompare(a.date || '');
+          return (b.time || '').localeCompare(a.time || '');
+        })
+        .map(d => {
+          const splitNames = (d.splitWithIds || []).map((id: string) => memberMap[id] || id).join(', ');
+          return {
+            '日期': d.date || '',
+            '時間': d.time || '',
+            '項目': d.description || '',
+            '分類': d.category || '',
+            '韓幣(KRW)': d.amountKRW || 0,
+            '台幣(TWD)': d.amountTWD || 0,
+            '付款人': memberMap[d.payerId] || d.payerId || '',
+            '分攤成員': splitNames
+          };
+        });
       const wsExpenses = XLSX.utils.json_to_sheet(expensesData);
       XLSX.utils.book_append_sheet(wb, wsExpenses, "記帳本");
 
@@ -185,30 +193,32 @@ const App: React.FC = () => {
       XLSX.utils.book_append_sheet(wb, wsPretrip, "行前準備");
 
       // 4. 個人清單
-      const todosSnap = await getDocs(query(collection(db, 'todos'), orderBy('ownerId')));
-      const todosData = todosSnap.docs.map(doc => {
-        const d = doc.data();
-        const typeMap: Record<string, string> = { 'todo': '準備', 'packing': '打包', 'shopping': '購物' };
-        return {
-          '成員': memberMap[d.ownerId] || d.ownerId || '',
-          '類型': typeMap[d.type] || d.type || '',
-          '內容': d.text || '',
-          '狀態': d.completed ? '已完成' : '未完成'
-        };
-      });
+      const todosSnap = await getDocs(collection(db, 'todos'));
+      const todosData = todosSnap.docs.map(doc => doc.data())
+        .sort((a, b) => (a.ownerId || '').localeCompare(b.ownerId || ''))
+        .map(d => {
+          const typeMap: Record<string, string> = { 'todo': '準備', 'packing': '打包', 'shopping': '購物' };
+          return {
+            '成員': memberMap[d.ownerId] || d.ownerId || '',
+            '類型': typeMap[d.type] || d.type || '',
+            '內容': d.text || '',
+            '狀態': d.completed ? '已完成' : '未完成'
+          };
+        });
       const wsTodos = XLSX.utils.json_to_sheet(todosData);
       XLSX.utils.book_append_sheet(wb, wsTodos, "個人清單");
 
       // 5. 旅遊日誌
-      const journalSnap = await getDocs(query(collection(db, 'journal'), orderBy('date', 'desc')));
-      const journalData = journalSnap.docs.map(doc => {
-        const d = doc.data();
-        return {
-          '日期': d.date ? new Date(d.date).toLocaleString() : '',
-          '作者': memberMap[d.authorId] || d.authorId || '',
-          '內容': d.content || ''
-        };
-      });
+      const journalSnap = await getDocs(collection(db, 'journal'));
+      const journalData = journalSnap.docs.map(doc => doc.data())
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .map(d => {
+          return {
+            '日期': d.date ? new Date(d.date).toLocaleString() : '',
+            '作者': memberMap[d.authorId] || d.authorId || '',
+            '內容': d.content || ''
+          };
+        });
       const wsJournal = XLSX.utils.json_to_sheet(journalData);
       XLSX.utils.book_append_sheet(wb, wsJournal, "旅遊日誌");
 
